@@ -1,0 +1,6 @@
+{
+  "name": "Company A Tours - South India & Kerala Holiday Packages",
+  "description": "Premium holiday packages for Kerala and South India with 5-minute CMS, AI-assisted enquiry triage, and instant quotation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
