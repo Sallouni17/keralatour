@@ -1,0 +1,171 @@
+// Prisma schema for Company A Holiday Packages & Enquiry Management
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String       @id @default(cuid())
+  name         String
+  email        String       @unique
+  passwordHash String
+  role         String       @default("TRAVELLER") // ADMIN, EDITOR, CONSULTANT, TRAVELLER
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  versions     PackageVersion[]
+  enquiries    Enquiry[]    @relation("AssignedTo")
+  notes        EnquiryNote[]
+  activityLogs ActivityLog[]
+  replyDrafts  ReplyDraft[]
+}
+
+model Destination {
+  id        String    @id @default(cuid())
+  slug      String    @unique
+  name      String
+  summary   String
+  heroImage String
+  packages  Package[]
+  createdAt DateTime  @default(now())
+}
+
+model Package {
+  id               String          @id @default(cuid())
+  code             String          @unique // e.g. PKG-KL-07
+  slug             String          @unique
+  destinationId    String
+  destination      Destination     @relation(fields: [destinationId], references: [id])
+  status           String          @default("DRAFT") // DRAFT, SCHEDULED, PUBLISHED, ARCHIVED
+  publishAt        DateTime?
+  currentVersionId String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  versions         PackageVersion[]
+  enquiries        Enquiry[]
+  suggestions      PackageSuggestion[]
+}
+
+model PackageVersion {
+  id            String   @id @default(cuid())
+  packageId     String
+  package       Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  snapshot      String   // JSON containing title, summary, days, nights, hotelCategory, itinerary[], inclusions[], exclusions[], hotels[], photos[], mapPoints[], tags[], seasonalPrices[], childPricePercent
+  changeNote    String?
+  createdById   String?
+  createdBy     User?    @relation(fields: [createdById], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([packageId, versionNumber])
+}
+
+model Enquiry {
+  id                    String              @id @default(cuid())
+  reference             String              @unique // e.g. ENQ-0001
+  source                String              @default("WEB_FORM") // WEB_FORM, CHAT, WHATSAPP, EMAIL, PHONE
+  packageId             String?
+  package               Package?            @relation(fields: [packageId], references: [id])
+  name                  String
+  email                 String
+  phone                 String
+  travelMonth           String?
+  travelDate            String?
+  adults                Int                 @default(2)
+  children              Int                 @default(0)
+  message               String
+  consentDataProcessing Boolean             @default(true)
+  consentWhatsApp       Boolean             @default(false)
+  status                String              @default("NEW") // NEW, ASSIGNED, IN_PROGRESS, QUOTED, WON, LOST
+  assignedToId          String?
+  assignedTo            User?               @relation("AssignedTo", fields: [assignedToId], references: [id])
+  firstResponseAt       DateTime?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  extraction            EnquiryExtraction?
+  suggestions           PackageSuggestion[]
+  replyDrafts           ReplyDraft[]
+  notes                 EnquiryNote[]
+  messages              MessageLog[]
+}
+
+model EnquiryExtraction {
+  id              String   @id @default(cuid())
+  enquiryId       String   @unique
+  enquiry         Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  fields          String   // JSON: destination, startMonth, nights, adults, children, budgetTotalINR, mustHaves[], confidence per field
+  correctedFields String?  // JSON corrected by consultant
+  model           String   // e.g. "gemini-3.8-flash" or "rule-based-fallback"
+  rawResponse     String?
+  status          String   @default("PENDING") // PENDING, REVIEWED
+  createdAt       DateTime @default(now())
+}
+
+model PackageSuggestion {
+  id        String   @id @default(cuid())
+  enquiryId String
+  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  packageId String
+  package   Package  @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  rank      Int
+  score     Float
+  reasons   String   // JSON array of string reasons
+  createdAt DateTime @default(now())
+}
+
+model ReplyDraft {
+  id             String   @id @default(cuid())
+  enquiryId      String
+  enquiry        Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  body           String
+  priceBreakdown String   // JSON: adults, children, subtotal, gstRate, gstAmount, total
+  status         String   @default("DRAFT") // DRAFT, ACCEPTED, SENT, DISCARDED
+  acceptedById   String?
+  acceptedBy     User?    @relation(fields: [acceptedById], references: [id])
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model EnquiryNote {
+  id        String   @id @default(cuid())
+  enquiryId String
+  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model MessageLog {
+  id        String   @id @default(cuid())
+  enquiryId String
+  enquiry   Enquiry  @relation(fields: [enquiryId], references: [id], onDelete: Cascade)
+  channel   String   // EMAIL, WHATSAPP, SMS
+  direction String   // OUTBOUND, INBOUND
+  body      String
+  template  String?  // e.g. "acknowledgement", "quote_proposal"
+  recipient String?
+  createdAt DateTime @default(now())
+}
+
+model ActivityLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actor      User?    @relation(fields: [actorId], references: [id])
+  action     String   // e.g. "PACKAGE_CREATED", "VERSION_SAVED", "ENQUIRY_EXTRACTED", "REPLY_SENT", "ROLE_CHECK_DENIED"
+  entityType String   // PACKAGE, ENQUIRY, USER, SYSTEM
+  entityId   String?
+  meta       String?  // JSON metadata
+  createdAt  DateTime @default(now())
+}
+
+model Redirect {
+  id         String   @id @default(cuid())
+  fromPath   String   @unique
+  toPath     String
+  statusCode Int      @default(301)
+  createdAt  DateTime @default(now())
+}
